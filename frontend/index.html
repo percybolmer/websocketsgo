@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>PP - Websockets</title>
+</head>
+
+<body>
+    <div class="center">
+        <h1>Amazing Chat Application</h1>
+        <h3 id="chat-header">Currently in chat: general</h3>
+
+        <!--
+        Here is a form that allows us to select what Chatroom to be in
+        -->
+        <form id="chatroom-selection">
+            <label for="chatroom">Chatroom:</label>
+            <input type="text" id="chatroom" name="chatroom"><br><br>
+            <input type="submit" value="Change chatroom">
+        </form>
+
+        <br>
+        <!--
+        Textarea to show messages from users
+        -->
+        <textarea class="messagearea" id="chatmessages" readonly name="chatmessages" rows="4" cols="50"
+            placeholder="Welcome to the general chatroom, here messages from others will appear"></textarea>
+
+        <br>
+        <!--
+        Chatroom-message form is used to send messages
+        -->
+        <form id="chatroom-message">
+            <label for="message">Message:</label>
+            <input type="text" id="message" name="message"><br><br>
+            <input type="submit" value="Send message">
+        </form>
+    </div>
+
+    <!--
+        Javascript that is used to Connect to Websocket and Handle New messages
+    -->
+    <script type="text/javascript">
+
+        // selectedchat is by default General.
+        var selectedchat = "general";
+
+        /**
+         * changeChatRoom will update the value of selectedchat
+         * and also notify the server that it changes chatroom
+         * */
+        function changeChatRoom() {
+            // Change Header to reflect the Changed chatroom
+            var newchat = document.getElementById("chatroom");
+            if (newchat != null && newchat.value != selectedchat) {
+                console.log(newchat);
+            }
+            return false;
+        }
+        /**
+         * sendMessage will send a new message onto the Websocket
+         * */
+        function sendMessage() {
+            var newmessage = document.getElementById("message");
+            if (newmessage != null) {
+                console.log(newmessage);
+            }
+            return false;
+        }
+        /**
+         * Once the website loads, we want to apply listeners and connect to websocket
+         * */
+        window.onload = function () {
+            // Apply our listener functions to the submit event on both forms
+            // we do it this way to avoid redirects
+            document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
+            document.getElementById("chatroom-message").onsubmit = sendMessage;
+
+            // Check if the browser supports WebSocket
+            if (window["WebSocket"]) {
+                console.log("supports websockets");
+                // Connect to websocket
+                conn = new WebSocket("ws://" + document.location.host + "/ws");
+            } else {
+                alert("Not supporting websockets");
+            }
+        };
+    </script>
+
+    <style type="text/css">
+        body {
+            overflow: hidden;
+            padding: 0;
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: rgb(66, 56, 56);
+        }
+
+        .center {
+            margin: auto;
+            width: 50%;
+            border: 3px solid green;
+            padding: 10px;
+        }
+    </style>
+
+</body>
+
+</html>
