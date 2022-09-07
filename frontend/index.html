@@ -66,7 +66,7 @@
         function sendMessage() {
             var newmessage = document.getElementById("message");
             if (newmessage != null) {
-                console.log(newmessage);
+                conn.send(newmessage.value);
             }
             return false;
         }
@@ -84,6 +84,9 @@
                 console.log("supports websockets");
                 // Connect to websocket
                 conn = new WebSocket("ws://" + document.location.host + "/ws");
+            
+                
+            
             } else {
                 alert("Not supporting websockets");
             }
