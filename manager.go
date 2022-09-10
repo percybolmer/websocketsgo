@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -18,6 +20,10 @@ var (
 	}
 )
 
+var (
+	ErrEventNotSupported = errors.New("this event type is not supported")
+)
+
 // Manager is used to hold references to all Clients Registered, and Broadcasting etc
 type Manager struct {
 	clients ClientList
@@ -25,12 +31,39 @@ type Manager struct {
 	// Using a syncMutex here to be able to lcok state before editing clients
 	// Could also use Channels to block
 	sync.RWMutex
+	// handlers are functions that are used to handle Events
+	handlers map[string]EventHandler
 }
 
 // NewManager is used to initalize all the values inside the manager
 func NewManager() *Manager {
-	return &Manager{
-		clients: make(ClientList),
+	m := &Manager{
+		clients:  make(ClientList),
+		handlers: make(map[string]EventHandler),
+	}
+	m.setupEventHandlers()
+	return m
+}
+
+// setupEventHandlers configures and adds all handlers
+func (m *Manager) setupEventHandlers() {
+	m.handlers[EventSendMessage] = func(e Event, c *Client) error {
+		fmt.Println(e)
+		return nil
+	}
+}
+
+// routeEvent is used to make sure the correct event goes into the correct handler
+func (m *Manager) routeEvent(event Event, c *Client) error {
+	// Check if Handler is present in Map
+	if handler, ok := m.handlers[event.Type]; ok {
+		// Execute the handler and return any err
+		if err := handler(event, c); err != nil {
+			return err
+		}
+		return nil
+	} else {
+		return ErrEventNotSupported
 	}
 }
 
@@ -51,6 +84,7 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 	m.addClient(client)
 
 	go client.readMessages()
+	go client.writeMessages()
 }
 
 // addClient will add clients to our clientList
