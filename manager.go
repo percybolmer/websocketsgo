@@ -15,6 +15,8 @@ var (
 	websocketUpgrader is used to upgrade incomming HTTP requests into a persitent websocket connection
 	*/
 	websocketUpgrader = websocket.Upgrader{
+		// Apply the Origin Checker
+		CheckOrigin:     checkOrigin,
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
@@ -23,6 +25,20 @@ var (
 var (
 	ErrEventNotSupported = errors.New("this event type is not supported")
 )
+
+// checkOrigin will check origin and return true if its allowed
+func checkOrigin(r *http.Request) bool {
+
+	// Grab the request origin
+	origin := r.Header.Get("Origin")
+
+	switch origin {
+	case "http://localhost:8080":
+		return true
+	default:
+		return false
+	}
+}
 
 // Manager is used to hold references to all Clients Registered, and Broadcasting etc
 type Manager struct {
