@@ -77,6 +77,26 @@
             }
         }
         /**
+         * SendMessageEvent is used to send messages to other clients
+         * */
+        class SendMessageEvent {
+            constructor(message, from) {
+                this.message = message;
+                this.from = from;
+            }
+        }
+        /**
+         * NewMessageEvent is messages comming from clients
+         * */
+        class NewMessageEvent {
+            constructor(message, from, sent) {
+                this.message = message;
+                this.from = from;
+                this.sent = sent;
+            }
+        }
+
+        /**
          * routeEvent is a proxy function that routes
          * events into their correct Handler
          * based on the type field
@@ -88,7 +108,9 @@
             }
             switch (event.type) {
                 case "new_message":
-                    console.log("new message");
+                    // Format payload
+                    const messageEvent = Object.assign(new NewMessageEvent, event.payload);
+                    appendChatMessage(messageEvent);
                     break;
                 default:
                     alert("unsupported message type");
@@ -96,7 +118,27 @@
             }
 
         }
+        /**
+         * appendChatMessage takes in new messages and adds them to the chat
+         * */
+        function appendChatMessage(messageEvent) {
+            var date = new Date(messageEvent.sent);
+            // format message
+            const formattedMsg = `${date.toLocaleString()}: ${messageEvent.message}`;
+            // Append Message
+            textarea = document.getElementById("chatmessages");
+            textarea.innerHTML = textarea.innerHTML + "\n" + formattedMsg;
+            textarea.scrollTop = textarea.scrollHeight;
+        }
 
+        /**
+         * ChangeChatRoomEvent is used to switch chatroom
+         * */
+        class ChangeChatRoomEvent {
+            constructor(name) {
+                this.name = name;
+            }
+        }
         /**
          * changeChatRoom will update the value of selectedchat
          * and also notify the server that it changes chatroom
@@ -105,7 +147,13 @@
             // Change Header to reflect the Changed chatroom
             var newchat = document.getElementById("chatroom");
             if (newchat != null && newchat.value != selectedchat) {
-                console.log(newchat);
+                selectedchat = newchat.value;
+                header = document.getElementById("chat-header").innerHTML = "Currently in chat: " + selectedchat;
+
+                let changeEvent = new ChangeChatRoomEvent(selectedchat);
+                sendEvent("change_room", changeEvent);
+                textarea = document.getElementById("chatmessages");
+                textarea.innerHTML = `You changed room into: ${selectedchat}`;
             }
             return false;
         }
@@ -115,7 +163,8 @@
         function sendMessage() {
             var newmessage = document.getElementById("message");
             if (newmessage != null) {
-                sendEvent("send_message", newmessage.value)
+                let outgoingEvent = new SendMessageEvent(newmessage.value, "percy");
+                sendEvent("send_message", outgoingEvent)
             }
             return false;
         }
@@ -165,14 +214,14 @@
             if (window["WebSocket"]) {
                 console.log("supports websockets");
                 // Connect to websocket using OTP as a GET parameter
-                conn = new WebSocket("wss://" + document.location.host + "/ws?otp="+ otp);
+                conn = new WebSocket("wss://" + document.location.host + "/ws?otp=" + otp);
 
                 // Onopen
                 conn.onopen = function (evt) {
                     document.getElementById("connection-header").innerHTML = "Connected to Websocket: true";
                 }
 
-                conn.onclose = function(evt) {
+                conn.onclose = function (evt) {
                     // Set disconnected
                     document.getElementById("connection-header").innerHTML = "Connected to Websocket: false";
                 }
