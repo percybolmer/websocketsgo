@@ -1,2 +1,6 @@
 frontend/complete-index.html
 frontend/websocket-index-v1.html
+complete
+.vscode
+*.crt
+*.key

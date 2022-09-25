@@ -2,35 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
-)
-
-var (
-	ErrEventNotSupported = errors.New("event type is not supported")
-)
-
-const (
-	DEFAULT_BUFFER_LIMIT = 255
-	DEFAULT_CHATROOM     = "general"
-)
-
-var (
-	// pongWait is how long we will await a pong response from client
-	pongWait = 10 * time.Second
-	// pingInterval has to be less than pongWait, We cant multiply by 0.9 to get 90% of time
-	// Because that can make decimals, so instead *9 / 10 to get 90%
-	// The reason why it has to be less than PingRequency is becuase otherwise it will send a new Ping before getting response
-	pingInterval = (pongWait * 9) / 10
-
-	// maximumMessageSize allowed per Client
-	maximumMessageSize int64 = 512
-	// writeTimeout is how long a write is allowed to take
-	writeTimeout = 10 * time.Second
 )
 
 // ClientList is a map used to help manage a map of clients
@@ -43,23 +18,27 @@ type Client struct {
 
 	// manager is the manager used to manage the client
 	manager *Manager
-
-	// egress is outgoing messages from the Client
-	// We use a egress Channel to ensure there is only 1 concurrent Writer in the Application on the Connection
-	// This is a buffered Channel
+	// egress is used to avoid concurrent writes on the WebSocket
 	egress chan Event
-
-	// chatroom is the currently selected chatroom
+	// chatroom is used to know what room user is in
 	chatroom string
 }
+
+var (
+	// pongWait is how long we will await a pong response from client
+	pongWait = 10 * time.Second
+	// pingInterval has to be less than pongWait, We cant multiply by 0.9 to get 90% of time
+	// Because that can make decimals, so instead *9 / 10 to get 90%
+	// The reason why it has to be less than PingRequency is becuase otherwise it will send a new Ping before getting response
+	pingInterval = (pongWait * 9) / 10
+)
 
 // NewClient is used to initialize a new Client with all required values initialized
 func NewClient(conn *websocket.Conn, manager *Manager) *Client {
 	return &Client{
 		connection: conn,
 		manager:    manager,
-		egress:     make(chan Event, DEFAULT_BUFFER_LIMIT),
-		chatroom:   DEFAULT_CHATROOM,
+		egress:     make(chan Event),
 	}
 }
 
@@ -68,22 +47,27 @@ func NewClient(conn *websocket.Conn, manager *Manager) *Client {
 // This is suppose to be ran as a goroutine
 func (c *Client) readMessages() {
 	defer func() {
-		// Close Connection once we shutdown
-		//c.connection.Close()
+		// Graceful Close the Connection once this
+		// function is done
 		c.manager.removeClient(c)
 	}()
-	// Configure Message Size
-	c.connection.SetReadLimit(maximumMessageSize)
-	// Configure Wait time for Pong response, use Current time + Wait Period
+	// Set Max Size of Messages in Bytes
+	c.connection.SetReadLimit(512)
+	// Configure Wait time for Pong response, use Current time + pongWait
+	// This has to be done here to set the first initial timer.
 	if err := c.connection.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 		log.Println(err)
 		return
 	}
+	// Configure how to handle Pong responses
 	c.connection.SetPongHandler(c.pongHandler)
 
-	// For loops repeadly forever until broken
+	// Loop Forever
 	for {
-		messagetype, message, err := c.connection.ReadMessage()
+		// ReadMessage is used to read the next message in queue
+		// in the connection
+		_, payload, err := c.connection.ReadMessage()
+
 		if err != nil {
 			// If Connection is closed, we will Recieve an error here
 			// We only want to log Strange errors, but simple Disconnection
@@ -92,19 +76,16 @@ func (c *Client) readMessages() {
 			}
 			break // Break the loop to close conn & Cleanup
 		}
-		log.Println("MessageType: ", messagetype)
-
-		// Recieve on the application defined standard
+		// Marshal incoming data into a Event struct
 		var request Event
-		if err := json.Unmarshal(message, &request); err != nil {
+		if err := json.Unmarshal(payload, &request); err != nil {
 			log.Printf("error marshalling message: %v", err)
 			break // Breaking the connection here might be harsh xD
 		}
-
-		if err := c.handleEvent(request); err != nil {
-			log.Println(err)
+		// Route the Event
+		if err := c.manager.routeEvent(request, c); err != nil {
+			log.Println("Error handeling Message: ", err)
 		}
-
 	}
 }
 
@@ -115,22 +96,27 @@ func (c *Client) pongHandler(pongMsg string) error {
 	return c.connection.SetReadDeadline(time.Now().Add(pongWait))
 }
 
+// writeMessages is a process that listens for new messages to output to the Client
 func (c *Client) writeMessages() {
+	// Create a ticker that triggers a ping at given interval
 	ticker := time.NewTicker(pingInterval)
 	defer func() {
 		ticker.Stop()
-		c.connection.Close()
+		// Graceful close if this triggers a closing
+		c.manager.removeClient(c)
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.egress:
+			// Ok will be false Incase the egress channel is closed
 			if !ok {
-				// Manager has closed this connection channel
+				// Manager has closed this connection channel, so communicate that to frontend
 				if err := c.connection.WriteMessage(websocket.CloseMessage, nil); err != nil {
-					// This
+					// Log that the connection is closed and the reason
 					log.Println("connection closed: ", err)
 				}
+				// Return to close the goroutine
 				return
 			}
 
@@ -139,46 +125,19 @@ func (c *Client) writeMessages() {
 				log.Println(err)
 				return // closes the connection, should we really
 			}
+			// Write a Regular text message to the connection
 			if err := c.connection.WriteMessage(websocket.TextMessage, data); err != nil {
 				log.Println(err)
 			}
-			log.Println("send message")
+			log.Println("sent message")
 		case <-ticker.C:
 			log.Println("ping")
-
+			// Send the Ping
 			if err := c.connection.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 				log.Println("writemsg: ", err)
 				return // return to break this goroutine triggeing cleanup
 			}
 		}
 
-	}
-}
-
-// handleEvent is used to handle the incomming event
-func (c *Client) handleEvent(event Event) error {
-	// Execute eventhandler if present in event map
-	if handler, ok := eventHandlers[event.Type]; ok {
-		// execute selected handler
-		responseEvent, err := handler(event, c)
-		if err != nil {
-			return fmt.Errorf("failed to execute handler: %v", err)
-		}
-
-		// if response is empty, skip it
-		if responseEvent == nil {
-			return nil
-		}
-		data, err := json.Marshal(responseEvent)
-		if err != nil {
-			return fmt.Errorf("failed to marshal response: %v", err)
-		}
-		// Send the response to the Client
-		if err := c.connection.WriteMessage(websocket.TextMessage, data); err != nil {
-			return fmt.Errorf("failed to respond to client: %v", err)
-		}
-		return nil
-	} else {
-		return ErrEventNotSupported
 	}
 }
