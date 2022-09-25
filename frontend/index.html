@@ -12,6 +12,7 @@
     <div class="center">
         <h1>Amazing Chat Application</h1>
         <h3 id="chat-header">Currently in chat: general</h3>
+        <h3 id="connection-header">Connected to Websocket: false</h3>
 
         <!--
         Here is a form that allows us to select what Chatroom to be in
@@ -38,6 +39,20 @@
             <input type="text" id="message" name="message"><br><br>
             <input type="submit" value="Send message">
         </form>
+
+        <!--
+        login form is used to login
+        -->
+        <div style="border: 3px solid black;margin-top: 30px;">
+            <form id="login-form">
+                <label for="username">username:</label>
+                <input type="text" id="username" name="username"><br>
+                <label for="password">password:</label>
+                <input type="password" id="password" name="password"><br><br>
+                <input type="submit" value="Login">
+            </form>
+        </div>
+
     </div>
 
     <!--
@@ -117,19 +132,50 @@
             conn.send(JSON.stringify(event));
         }
         /**
-         * Once the website loads, we want to apply listeners and connect to websocket
+         * login will send a login request to the server and then 
+         * connect websocket
          * */
-        window.onload = function () {
-            // Apply our listener functions to the submit event on both forms
-            // we do it this way to avoid redirects
-            document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
-            document.getElementById("chatroom-message").onsubmit = sendMessage;
-
+        function login() {
+            let formData = {
+                "username": document.getElementById("username").value,
+                "password": document.getElementById("password").value
+            }
+            // Send the request
+            fetch("login", {
+                method: 'post',
+                body: JSON.stringify(formData),
+                mode: 'cors',
+            }).then((response) => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw 'unauthorized';
+                }
+            }).then((data) => {
+                // Now we have a OTP, send a Request to Connect to WebSocket
+                connectWebsocket(data.otp);
+            }).catch((e) => { alert(e) });
+            return false;
+        }
+        /**
+         * ConnectWebsocket will connect to websocket and add listeners
+         * */
+        function connectWebsocket(otp) {
             // Check if the browser supports WebSocket
             if (window["WebSocket"]) {
                 console.log("supports websockets");
-                // Connect to websocket
-                conn = new WebSocket("ws://" + document.location.host + "/ws");
+                // Connect to websocket using OTP as a GET parameter
+                conn = new WebSocket("ws://" + document.location.host + "/ws?otp="+ otp);
+
+                // Onopen
+                conn.onopen = function (evt) {
+                    document.getElementById("connection-header").innerHTML = "Connected to Websocket: true";
+                }
+
+                conn.onclose = function(evt) {
+                    // Set disconnected
+                    document.getElementById("connection-header").innerHTML = "Connected to Websocket: false";
+                }
 
                 // Add a listener to the onmessage event
                 conn.onmessage = function (evt) {
@@ -145,6 +191,18 @@
             } else {
                 alert("Not supporting websockets");
             }
+        }
+        /**
+         * Once the website loads
+         * */
+        window.onload = function () {
+            // Apply our listener functions to the submit event on both forms
+            // we do it this way to avoid redirects
+            document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
+            document.getElementById("chatroom-message").onsubmit = sendMessage;
+            document.getElementById("login-form").onsubmit = login;
+
+
         };
     </script>
 
