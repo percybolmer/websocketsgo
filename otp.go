@@ -1,3 +1,4 @@
+// Package main - the OTP file is used for having a OTP manager
 package main
 
 import (
@@ -7,10 +8,16 @@ import (
 	"github.com/google/uuid"
 )
 
+
 type OTP struct {
 	Key     string
 	Created time.Time
 }
+
+type Verifier interface {
+	VerifyOTP(otp string) bool
+}
+
 
 type RetentionMap map[string]OTP
 

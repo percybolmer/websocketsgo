@@ -15,6 +15,8 @@ type Event struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+
+
 // EventHandler is a function signature that is used to affect messages on the socket and triggered
 // depending on the type
 type EventHandler func(event Event, c *Client) error
@@ -40,6 +42,8 @@ type NewMessageEvent struct {
 	SendMessageEvent
 	Sent time.Time `json:"sent"`
 }
+
+
 
 // SendMessageHandler will send out a message to all other participants in the chat
 func SendMessageHandler(event Event, c *Client) error {
